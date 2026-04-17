@@ -24,6 +24,14 @@
         <receiver
             android:name="com.thoughtnudge.sdk.TNNotificationClickReceiver"
             android:exported="false" />
+
+        <!--
+            Notification Dismiss Receiver — auto-merged into client's manifest.
+            Reports "read" event when user swipes away a notification.
+        -->
+        <receiver
+            android:name="com.thoughtnudge.sdk.TNNotificationDismissReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -47,6 +47,17 @@ internal object TNNotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // PendingIntent → TNNotificationDismissReceiver → reports "read"
+        val dismissIntent = Intent(context, TNNotificationDismissReceiver::class.java).apply {
+            putExtra("tn_message_id", messageId)
+        }
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            context,
+            messageId.hashCode() + 1,
+            dismissIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         // Resolve the app's icon for the notification
         val appIconRes = try {
             val appInfo = context.packageManager.getApplicationInfo(context.packageName, 0)
@@ -60,6 +71,7 @@ internal object TNNotificationHelper {
             .setContentTitle(title)
             .setContentText(body)
             .setContentIntent(pendingIntent)
+            .setDeleteIntent(deletePendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()

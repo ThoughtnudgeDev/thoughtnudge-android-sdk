@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!--
+            FCM Messaging Service — auto-merged into client's manifest.
+            Handles incoming push notifications and token refresh.
+        -->
+        <service
+            android:name="com.thoughtnudge.sdk.TNFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!--
+            Notification Click Receiver — auto-merged into client's manifest.
+            Reports "clicked" event when user taps a notification.
+        -->
+        <receiver
+            android:name="com.thoughtnudge.sdk.TNNotificationClickReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>

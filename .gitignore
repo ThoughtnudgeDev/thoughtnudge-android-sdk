@@ -1,0 +1,11 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/thoughtnudge-sdk/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties

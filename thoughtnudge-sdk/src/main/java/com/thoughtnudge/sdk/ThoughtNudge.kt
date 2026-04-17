@@ -120,6 +120,20 @@ object ThoughtNudge {
 
     // -- Internal --
 
+    /**
+     * Restore config from SharedPreferences. Called by the FCM service and receivers
+     * which may run in a fresh process (before init() has been called).
+     */
+    internal fun ensureLoaded(ctx: Context) {
+        if (apiBaseUrl.isNotEmpty()) return
+        val p = ctx.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        apiBaseUrl = p.getString(KEY_API_BASE_URL, "") ?: ""
+        appId = p.getString(KEY_APP_ID, "") ?: ""
+        userId = p.getString(KEY_USER_ID, "") ?: ""
+        context = ctx.applicationContext
+        prefs = p
+    }
+
     internal fun onTokenRefresh(newToken: String) {
         prefs?.edit()?.putString(KEY_FCM_TOKEN, newToken)?.apply()
         if (userId.isNotEmpty() && apiBaseUrl.isNotEmpty()) {

@@ -16,12 +16,14 @@ class TNFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        ThoughtNudge.ensureLoaded(applicationContext)
         Log.d(ThoughtNudge.TAG, "FCM token refreshed")
         ThoughtNudge.onTokenRefresh(token)
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
+        ThoughtNudge.ensureLoaded(applicationContext)
         Log.d(ThoughtNudge.TAG, "Push notification received")
 
         val data = remoteMessage.data

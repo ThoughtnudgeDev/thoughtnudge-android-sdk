@@ -14,6 +14,7 @@ import android.util.Log
 class TNNotificationDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val messageId = intent.getStringExtra("tn_message_id") ?: return
+        ThoughtNudge.ensureLoaded(context)
         Log.d(ThoughtNudge.TAG, "Notification dismissed (read): $messageId")
 
         // Report READ to ThoughtNudge backend

@@ -4,19 +4,39 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.RemoteMessage
 
 /**
  * ThoughtNudge Push Notification SDK for Android.
  *
+ * The SDK does NOT register its own FirebaseMessagingService. You must forward
+ * FCM messages and token refreshes from your existing service.
+ *
  * Usage:
  * ```
- * // 1. Initialize (once, in Application.onCreate or MainActivity.onCreate)
- * ThoughtNudge.init(context, "https://api.thoughtnudge.com", "YOUR_APP_ID")
+ * // 1. Initialize once in Application.onCreate()
+ * ThoughtNudge.init(
+ *     context = this,
+ *     appId = "YOUR_APP_ID",
+ *     environment = ThoughtNudge.Environment.PRODUCTION
+ * )
  *
- * // 2. Identify user (after login)
+ * // 2. Identify user after login
  * ThoughtNudge.identify("user-123")
  *
- * // 3. Logout (when user logs out)
+ * // 3. In your existing FirebaseMessagingService:
+ * override fun onMessageReceived(message: RemoteMessage) {
+ *     if (ThoughtNudge.isThoughtNudgeNotification(message)) {
+ *         ThoughtNudge.handleMessage(applicationContext, message)
+ *         return
+ *     }
+ *     // your logic
+ * }
+ * override fun onNewToken(token: String) {
+ *     ThoughtNudge.onNewToken(token)
+ * }
+ *
+ * // 4. Logout
  * ThoughtNudge.logout()
  * ```
  */
@@ -27,6 +47,17 @@ object ThoughtNudge {
     private const val KEY_APP_ID = "tn_app_id"
     private const val KEY_API_BASE_URL = "tn_api_base_url"
     private const val KEY_FCM_TOKEN = "tn_fcm_token"
+    private const val MESSAGE_ID_KEY = "tn_message_id"
+
+    /**
+     * Target ThoughtNudge environment. Each maps to a different backend URL
+     * internally — you never need to configure URLs directly.
+     */
+    enum class Environment(internal val url: String) {
+        PRODUCTION("https://api.thoughtnudge.com"),
+        STAGING("https://staging-api.thoughtnudge.com"),
+        DEVELOPMENT("https://9twvb42p-8000.inc1.devtunnels.ms")
+    }
 
     internal var apiBaseUrl = ""
         private set
@@ -39,34 +70,44 @@ object ThoughtNudge {
 
     private var prefs: SharedPreferences? = null
     private var initialized = false
+    private var pendingUserId: String? = null
 
     /**
      * Initialize the ThoughtNudge SDK.
-     * Call once in your Application.onCreate() or MainActivity.onCreate().
+     * Call once in Application.onCreate() or MainActivity.onCreate().
      *
-     * @param context     Application context
-     * @param apiBaseUrl  ThoughtNudge backend URL (provided by ThoughtNudge)
-     * @param appId       Your app ID (provided by ThoughtNudge)
+     * @param context      Application context
+     * @param appId        Your app ID (provided by ThoughtNudge)
+     * @param environment  Target environment (defaults to PRODUCTION)
      */
-    fun init(context: Context, apiBaseUrl: String, appId: String) {
+    @JvmStatic
+    @JvmOverloads
+    fun init(
+        context: Context,
+        appId: String,
+        environment: Environment = Environment.PRODUCTION
+    ) {
         this.context = context.applicationContext
-        this.apiBaseUrl = apiBaseUrl.trimEnd('/')
+        this.apiBaseUrl = environment.url
         this.appId = appId
         this.prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // Restore user ID from prefs (survives app restart)
         this.userId = prefs?.getString(KEY_USER_ID, "") ?: ""
 
-        // Save config
         prefs?.edit()
             ?.putString(KEY_APP_ID, appId)
-            ?.putString(KEY_API_BASE_URL, apiBaseUrl)
+            ?.putString(KEY_API_BASE_URL, environment.url)
             ?.apply()
 
         initialized = true
-        Log.d(TAG, "SDK initialized. appId=$appId, apiBaseUrl=$apiBaseUrl")
+        Log.d(TAG, "SDK initialized. appId=$appId, env=${environment.name}")
 
-        // If user was previously identified, re-register token
+        // Replay any identify() call that was made before init()
+        pendingUserId?.let {
+            pendingUserId = null
+            identify(it)
+        }
+
         if (userId.isNotEmpty()) {
             refreshToken()
         }
@@ -74,12 +115,15 @@ object ThoughtNudge {
 
     /**
      * Associate a user with this device. Call after user login.
-     * Fetches the FCM token and registers it with ThoughtNudge backend.
-     *
-     * @param userId  Your app's user identifier
+     * If called before init(), the call is queued and replayed once init() completes.
      */
+    @JvmStatic
     fun identify(userId: String) {
-        checkInitialized()
+        if (!initialized) {
+            Log.w(TAG, "identify() called before init() — queued")
+            pendingUserId = userId
+            return
+        }
         this.userId = userId
         prefs?.edit()?.putString(KEY_USER_ID, userId)?.apply()
         Log.d(TAG, "User identified: $userId")
@@ -89,8 +133,9 @@ object ThoughtNudge {
     /**
      * Call on user logout to deregister the device token.
      */
+    @JvmStatic
     fun logout() {
-        checkInitialized()
+        if (!initialized) return
         val token = prefs?.getString(KEY_FCM_TOKEN, "") ?: ""
         if (token.isNotEmpty()) {
             TNWebhookReporter.post(
@@ -108,21 +153,65 @@ object ThoughtNudge {
 
     /**
      * Report a custom event to ThoughtNudge backend.
-     * Delivered and clicked events are tracked automatically by the SDK.
-     *
-     * @param eventType  Event type string
-     * @param messageId  The tn_message_id from the notification data
+     * Delivered, read, and clicked events are tracked automatically.
      */
+    @JvmStatic
     fun reportEvent(eventType: String, messageId: String) {
-        checkInitialized()
         TNWebhookReporter.reportEvent(eventType, messageId)
     }
 
-    // -- Internal --
+    // ---- FCM forwarding API (called from client's FirebaseMessagingService) ----
 
     /**
-     * Restore config from SharedPreferences. Called by the FCM service and receivers
-     * which may run in a fresh process (before init() has been called).
+     * Returns true if the given FCM message originated from ThoughtNudge.
+     * Call this from your FirebaseMessagingService.onMessageReceived() to
+     * decide whether to forward the message to ThoughtNudge.
+     */
+    @JvmStatic
+    fun isThoughtNudgeNotification(remoteMessage: RemoteMessage): Boolean {
+        return remoteMessage.data.containsKey(MESSAGE_ID_KEY)
+    }
+
+    /**
+     * Handle a ThoughtNudge notification: reports "delivered" and displays
+     * the notification. Call from FirebaseMessagingService.onMessageReceived()
+     * after confirming with isThoughtNudgeNotification().
+     */
+    @JvmStatic
+    fun handleMessage(context: Context, remoteMessage: RemoteMessage) {
+        ensureLoaded(context)
+        val data = remoteMessage.data
+        val messageId = data[MESSAGE_ID_KEY] ?: ""
+        val title = remoteMessage.notification?.title ?: data["title"] ?: ""
+        val body = remoteMessage.notification?.body ?: data["body"] ?: ""
+
+        if (messageId.isNotEmpty()) {
+            TNWebhookReporter.reportEvent("delivered", messageId)
+        }
+        if (title.isNotEmpty() || body.isNotEmpty()) {
+            TNNotificationHelper.show(context.applicationContext, title, body, data)
+        }
+    }
+
+    /**
+     * Forward FCM token refresh to ThoughtNudge. Call from
+     * FirebaseMessagingService.onNewToken().
+     */
+    @JvmStatic
+    fun onNewToken(token: String) {
+        val ctx = context
+        if (ctx != null) ensureLoaded(ctx)
+        prefs?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()
+        if (userId.isNotEmpty() && apiBaseUrl.isNotEmpty()) {
+            registerToken(token)
+        }
+    }
+
+    // ---- Internal ----
+
+    /**
+     * Restore config from SharedPreferences. Called by receivers that may run
+     * in a fresh process before init() has been called.
      */
     internal fun ensureLoaded(ctx: Context) {
         if (apiBaseUrl.isNotEmpty()) return
@@ -132,13 +221,6 @@ object ThoughtNudge {
         userId = p.getString(KEY_USER_ID, "") ?: ""
         context = ctx.applicationContext
         prefs = p
-    }
-
-    internal fun onTokenRefresh(newToken: String) {
-        prefs?.edit()?.putString(KEY_FCM_TOKEN, newToken)?.apply()
-        if (userId.isNotEmpty() && apiBaseUrl.isNotEmpty()) {
-            registerToken(newToken)
-        }
     }
 
     private fun refreshToken() {
@@ -166,13 +248,5 @@ object ThoughtNudge {
             )
         )
         Log.d(TAG, "Token registered with backend")
-    }
-
-    private fun checkInitialized() {
-        if (!initialized) {
-            throw IllegalStateException(
-                "ThoughtNudge SDK not initialized. Call ThoughtNudge.init() first."
-            )
-        }
     }
 }

@@ -6,28 +6,17 @@
 
     <application>
         <!--
-            FCM Messaging Service — auto-merged into client's manifest.
-            Handles incoming push notifications and token refresh.
-        -->
-        <service
-            android:name="com.thoughtnudge.sdk.TNFirebaseMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
-        <!--
-            Notification Click Receiver — auto-merged into client's manifest.
-            Reports "clicked" event when user taps a notification.
+            Notification Click Receiver — fires when user taps a SDK-displayed
+            notification. Registered via SDK's own PendingIntent, no conflict
+            with client's own notification handling.
         -->
         <receiver
             android:name="com.thoughtnudge.sdk.TNNotificationClickReceiver"
             android:exported="false" />
 
         <!--
-            Notification Dismiss Receiver — auto-merged into client's manifest.
-            Reports "read" event when user swipes away a notification.
+            Notification Dismiss Receiver — fires when user swipes away a
+            SDK-displayed notification.
         -->
         <receiver
             android:name="com.thoughtnudge.sdk.TNNotificationDismissReceiver"

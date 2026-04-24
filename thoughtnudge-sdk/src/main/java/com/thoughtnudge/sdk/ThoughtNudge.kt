@@ -3,6 +3,8 @@ package com.thoughtnudge.sdk
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.RemoteMessage
 
@@ -49,6 +51,18 @@ object ThoughtNudge {
     private const val KEY_FCM_TOKEN = "tn_fcm_token"
     private const val MESSAGE_ID_KEY = "tn_message_id"
 
+    // ---- ThoughtNudge Firebase project credentials (hardcoded) ----
+    // The SDK initializes a SECONDARY FirebaseApp with these credentials so
+    // the client's default FirebaseApp (their own google-services.json)
+    // remains untouched. FCM tokens obtained via this secondary app are bound
+    // to ThoughtNudge's sender ID — our backend sends to them through our
+    // own service account.
+    private const val TN_FIREBASE_APP_NAME = "ThoughtNudgeApp"
+    private const val TN_FIREBASE_PROJECT_ID = "python-fcm-test-52411"
+    private const val TN_FIREBASE_APPLICATION_ID = "1:428970762530:android:41c334a96967cff444c57b"
+    private const val TN_FIREBASE_API_KEY = "AIzaSyC-ExiAw4OELxkU0Y1iqSWNNNYMSZiZ0i4"
+    private const val TN_FIREBASE_SENDER_ID = "428970762530"
+
     /**
      * Target ThoughtNudge environment. Each maps to a different backend URL
      * internally — you never need to configure URLs directly.
@@ -71,6 +85,7 @@ object ThoughtNudge {
     private var prefs: SharedPreferences? = null
     private var initialized = false
     private var pendingUserId: String? = null
+    private var tnFirebaseApp: FirebaseApp? = null
 
     /**
      * Initialize the ThoughtNudge SDK.
@@ -98,6 +113,8 @@ object ThoughtNudge {
             ?.putString(KEY_APP_ID, appId)
             ?.putString(KEY_API_BASE_URL, environment.url)
             ?.apply()
+
+        ensureTNFirebaseApp(context.applicationContext)
 
         initialized = true
         Log.d(TAG, "SDK initialized. appId=$appId, env=${environment.name}")
@@ -169,7 +186,16 @@ object ThoughtNudge {
      */
     @JvmStatic
     fun isThoughtNudgeNotification(remoteMessage: RemoteMessage): Boolean {
-        return remoteMessage.data.containsKey(MESSAGE_ID_KEY)
+        return isThoughtNudgeNotification(remoteMessage.data)
+    }
+
+    /**
+     * Map-based variant for clients that route FCM payloads as Map<String,String>
+     * (e.g. KMPNotifier) and no longer have the RemoteMessage at the detection point.
+     */
+    @JvmStatic
+    fun isThoughtNudgeNotification(data: Map<String, String>): Boolean {
+        return data.containsKey(MESSAGE_ID_KEY)
     }
 
     /**
@@ -179,11 +205,35 @@ object ThoughtNudge {
      */
     @JvmStatic
     fun handleMessage(context: Context, remoteMessage: RemoteMessage) {
-        ensureLoaded(context)
         val data = remoteMessage.data
+        val titleOverride = remoteMessage.notification?.title
+        val bodyOverride = remoteMessage.notification?.body
+        handleMessage(
+            context,
+            data,
+            titleOverride = titleOverride,
+            bodyOverride = bodyOverride
+        )
+    }
+
+    /**
+     * Map-based variant for clients that route FCM payloads as Map<String,String>
+     * (e.g. KMPNotifier). ThoughtNudge messages are data-only, so title/body
+     * are always present in the data payload under "title" and "body" keys —
+     * no information is lost vs the RemoteMessage variant.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun handleMessage(
+        context: Context,
+        data: Map<String, String>,
+        titleOverride: String? = null,
+        bodyOverride: String? = null
+    ) {
+        ensureLoaded(context)
         val messageId = data[MESSAGE_ID_KEY] ?: ""
-        val title = remoteMessage.notification?.title ?: data["title"] ?: ""
-        val body = remoteMessage.notification?.body ?: data["body"] ?: ""
+        val title = titleOverride ?: data["title"] ?: ""
+        val body = bodyOverride ?: data["body"] ?: ""
 
         if (messageId.isNotEmpty()) {
             TNWebhookReporter.reportEvent("delivered", messageId)
@@ -194,16 +244,21 @@ object ThoughtNudge {
     }
 
     /**
-     * Forward FCM token refresh to ThoughtNudge. Call from
+     * Signal that the default FirebaseApp's token has changed. Call from
      * FirebaseMessagingService.onNewToken().
+     *
+     * The passed token is your default Firebase project's token and is
+     * NOT stored by ThoughtNudge — we manage our own token via a secondary
+     * FirebaseApp. This call is used as a signal to refresh OUR token,
+     * since FCM token rotations often affect both projects.
      */
+    @Suppress("UNUSED_PARAMETER")
     @JvmStatic
     fun onNewToken(token: String) {
         val ctx = context
         if (ctx != null) ensureLoaded(ctx)
-        prefs?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()
         if (userId.isNotEmpty() && apiBaseUrl.isNotEmpty()) {
-            registerToken(token)
+            refreshToken()
         }
     }
 
@@ -221,10 +276,38 @@ object ThoughtNudge {
         userId = p.getString(KEY_USER_ID, "") ?: ""
         context = ctx.applicationContext
         prefs = p
+        ensureTNFirebaseApp(ctx.applicationContext)
+    }
+
+    /**
+     * Initialize (or reuse) a secondary FirebaseApp named "ThoughtNudgeApp"
+     * with hardcoded ThoughtNudge credentials. This keeps the client's
+     * default FirebaseApp (from their google-services.json) untouched while
+     * still letting us obtain FCM tokens from ThoughtNudge's project.
+     */
+    private fun ensureTNFirebaseApp(context: Context) {
+        if (tnFirebaseApp != null) return
+        val existing = FirebaseApp.getApps(context).firstOrNull { it.name == TN_FIREBASE_APP_NAME }
+        if (existing != null) {
+            tnFirebaseApp = existing
+            return
+        }
+        val options = FirebaseOptions.Builder()
+            .setProjectId(TN_FIREBASE_PROJECT_ID)
+            .setApplicationId(TN_FIREBASE_APPLICATION_ID)
+            .setApiKey(TN_FIREBASE_API_KEY)
+            .setGcmSenderId(TN_FIREBASE_SENDER_ID)
+            .build()
+        tnFirebaseApp = FirebaseApp.initializeApp(context, options, TN_FIREBASE_APP_NAME)
+        Log.d(TAG, "Secondary FirebaseApp initialized: $TN_FIREBASE_APP_NAME")
     }
 
     private fun refreshToken() {
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+        val app = tnFirebaseApp ?: run {
+            Log.w(TAG, "refreshToken() skipped — secondary FirebaseApp not initialized")
+            return
+        }
+        FirebaseMessaging.getInstance(app).token.addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 val token = task.result
                 prefs?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()

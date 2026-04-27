@@ -307,7 +307,11 @@ object ThoughtNudge {
             Log.w(TAG, "refreshToken() skipped — secondary FirebaseApp not initialized")
             return
         }
-        FirebaseMessaging.getInstance(app).token.addOnCompleteListener { task ->
+        // FirebaseMessaging.getInstance(FirebaseApp) is package-private; the
+        // public way to obtain a service from a secondary FirebaseApp is
+        // app.get(ServiceClass::class.java).
+        val messaging = app.get(FirebaseMessaging::class.java)
+        messaging.token.addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 val token = task.result
                 prefs?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()

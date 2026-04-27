@@ -190,11 +190,13 @@ object ThoughtNudge {
     }
 
     /**
-     * Map-based variant for clients that route FCM payloads as Map<String,String>
-     * (e.g. KMPNotifier) and no longer have the RemoteMessage at the detection point.
+     * Map-based variant for clients that route FCM payloads as a generic
+     * Map<String, *> / Map<String, Any?> (e.g. KMPNotifier) and no longer
+     * have the RemoteMessage at the detection point. Accepts any value type
+     * because some pipelines deserialize FCM data as Any?.
      */
     @JvmStatic
-    fun isThoughtNudgeNotification(data: Map<String, String>): Boolean {
+    fun isThoughtNudgeNotification(data: Map<String, *>): Boolean {
         return data.containsKey(MESSAGE_ID_KEY)
     }
 
@@ -217,29 +219,31 @@ object ThoughtNudge {
     }
 
     /**
-     * Map-based variant for clients that route FCM payloads as Map<String,String>
-     * (e.g. KMPNotifier). ThoughtNudge messages are data-only, so title/body
-     * are always present in the data payload under "title" and "body" keys —
-     * no information is lost vs the RemoteMessage variant.
+     * Map-based variant for clients that route FCM payloads as a generic
+     * Map<String, *> / Map<String, Any?> (e.g. KMPNotifier). ThoughtNudge
+     * messages are data-only, so title/body are always present in the data
+     * payload under "title" and "body" keys — no information is lost vs the
+     * RemoteMessage variant. Values are coerced to String via toString().
      */
     @JvmStatic
     @JvmOverloads
     fun handleMessage(
         context: Context,
-        data: Map<String, String>,
+        data: Map<String, *>,
         titleOverride: String? = null,
         bodyOverride: String? = null
     ) {
         ensureLoaded(context)
-        val messageId = data[MESSAGE_ID_KEY] ?: ""
-        val title = titleOverride ?: data["title"] ?: ""
-        val body = bodyOverride ?: data["body"] ?: ""
+        val messageId = data[MESSAGE_ID_KEY]?.toString() ?: ""
+        val title = titleOverride ?: data["title"]?.toString() ?: ""
+        val body = bodyOverride ?: data["body"]?.toString() ?: ""
 
         if (messageId.isNotEmpty()) {
             TNWebhookReporter.reportEvent("delivered", messageId)
         }
         if (title.isNotEmpty() || body.isNotEmpty()) {
-            TNNotificationHelper.show(context.applicationContext, title, body, data)
+            val stringData = data.mapValues { it.value?.toString() ?: "" }
+            TNNotificationHelper.show(context.applicationContext, title, body, stringData)
         }
     }
 

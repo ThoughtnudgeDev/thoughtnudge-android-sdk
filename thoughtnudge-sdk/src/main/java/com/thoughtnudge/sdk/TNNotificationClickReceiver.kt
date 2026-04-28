@@ -1,5 +1,6 @@
 package com.thoughtnudge.sdk
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -27,6 +28,12 @@ class TNNotificationClickReceiver : BroadcastReceiver() {
         if (!launched) {
             launchAppMainActivity(context, intent)
         }
+
+        // Action-button taps don't trigger setAutoCancel — dismiss explicitly.
+        // Body taps already auto-cancel; calling cancel() here is a harmless no-op
+        // for those, since the notification has already been removed.
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(messageId.hashCode())
     }
 
     private fun launchDeepLink(context: Context, url: String, sourceIntent: Intent): Boolean {

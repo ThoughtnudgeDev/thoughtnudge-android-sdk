@@ -110,7 +110,11 @@ internal object TNNotificationHelper {
             builder.addAction(0, text, actionPi)
         }
 
-        nm.notify(System.currentTimeMillis().toInt(), builder.build())
+        // Use a deterministic notification ID so the click receiver can
+        // cancel it on action-button taps (Android only auto-cancels on
+        // body taps, not on action button taps).
+        val notifId = if (messageId.isNotEmpty()) messageId.hashCode() else System.currentTimeMillis().toInt()
+        nm.notify(notifId, builder.build())
     }
 
     private fun buildClickPendingIntent(

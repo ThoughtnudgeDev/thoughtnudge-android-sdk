@@ -25,7 +25,8 @@ internal object TNWebhookReporter {
                 "event_type" to eventType,
                 "message_id" to messageId,
                 "user_id" to ThoughtNudge.userId,
-                "platform" to "android"
+                "platform" to "android",
+                "app_id" to ThoughtNudge.appId
             )
         )
         Log.d(ThoughtNudge.TAG, "Reported event: $eventType for message $messageId")

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <TextView
+        android:id="@+id/tn_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.Compat.Notification.Title"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tn_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.Compat.Notification"
+        android:layout_marginTop="2dp"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/tn_image"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:scaleType="centerCrop"
+        android:layout_marginTop="8dp"
+        android:contentDescription="@null"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tn_footer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.Compat.Notification.Info"
+        android:layout_marginTop="6dp"
+        android:visibility="gone" />
+
+</LinearLayout>

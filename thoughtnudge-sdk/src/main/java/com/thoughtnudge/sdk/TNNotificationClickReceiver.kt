@@ -3,11 +3,14 @@ package com.thoughtnudge.sdk
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
 
 /**
  * BroadcastReceiver that fires when the user taps a notification.
- * Reports "clicked" event to ThoughtNudge backend and opens the app.
+ * Reports "clicked" event to ThoughtNudge backend, then either:
+ *   - launches `cta_url` as a deep link if the message carries one, or
+ *   - falls back to the app's main activity.
  *
  * Auto-registered via manifest merger — clients don't need to declare it.
  */
@@ -17,15 +20,36 @@ class TNNotificationClickReceiver : BroadcastReceiver() {
         ThoughtNudge.ensureLoaded(context)
         Log.d(ThoughtNudge.TAG, "Notification clicked: $messageId")
 
-        // Report CLICKED to ThoughtNudge backend
         TNWebhookReporter.reportEvent("clicked", messageId)
 
-        // Launch the app's main activity
+        val ctaUrl = intent.getStringExtra("cta_url")?.takeIf { it.isNotEmpty() }
+        val launched = ctaUrl?.let { launchDeepLink(context, it, intent) } ?: false
+        if (!launched) {
+            launchAppMainActivity(context, intent)
+        }
+    }
+
+    private fun launchDeepLink(context: Context, url: String, sourceIntent: Intent): Boolean {
+        return try {
+            val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                setPackage(context.packageName)
+                sourceIntent.extras?.let { putExtras(it) }
+            }
+            context.startActivity(deepLinkIntent)
+            Log.d(ThoughtNudge.TAG, "Opened cta_url deep link: $url")
+            true
+        } catch (e: Exception) {
+            Log.w(ThoughtNudge.TAG, "Failed to open cta_url '$url': ${e.message} — falling back to main activity")
+            false
+        }
+    }
+
+    private fun launchAppMainActivity(context: Context, sourceIntent: Intent) {
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
         launchIntent?.let {
             it.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            // Forward notification data to the activity
-            intent.extras?.let { extras -> it.putExtras(extras) }
+            sourceIntent.extras?.let { extras -> it.putExtras(extras) }
             context.startActivity(it)
         }
     }

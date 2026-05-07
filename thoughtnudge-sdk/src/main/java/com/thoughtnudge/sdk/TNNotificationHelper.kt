@@ -66,31 +66,19 @@ internal object TNNotificationHelper {
 
         headerText?.let { builder.setSubText(it) }
 
-        // Use a custom expanded view whenever we have an image or footer or
-        // a body long enough to benefit from expansion. This guarantees the
-        // body text remains visible alongside the image — the standard
-        // BigPictureStyle hides body text under the picture.
+        // Use custom collapsed + expanded RemoteViews whenever we have rich
+        // content (image, footer, or a body long enough to benefit from
+        // expansion). We render the thumbnail INSIDE the collapsed view
+        // instead of via setLargeIcon — that prevents the small thumbnail
+        // from also appearing in the expanded view's system header alongside
+        // the big image (DecoratedCustomViewStyle has no equivalent of
+        // BigPictureStyle.bigLargeIcon(null) to clear it).
         val needsExpanded = bitmap != null || footerText != null || body.length > 40
         if (needsExpanded) {
-            val customView = RemoteViews(context.packageName, R.layout.tn_notification_expanded)
-            if (title.isNotEmpty()) {
-                customView.setTextViewText(R.id.tn_title, title)
-                customView.setViewVisibility(R.id.tn_title, View.VISIBLE)
-            }
-            if (body.isNotEmpty()) {
-                customView.setTextViewText(R.id.tn_body, body)
-                customView.setViewVisibility(R.id.tn_body, View.VISIBLE)
-            }
-            if (bitmap != null) {
-                customView.setImageViewBitmap(R.id.tn_image, bitmap)
-                customView.setViewVisibility(R.id.tn_image, View.VISIBLE)
-                builder.setLargeIcon(bitmap)
-            }
-            if (footerText != null) {
-                customView.setTextViewText(R.id.tn_footer, footerText)
-                customView.setViewVisibility(R.id.tn_footer, View.VISIBLE)
-            }
-            builder.setCustomBigContentView(customView)
+            val collapsedView = buildCollapsedView(context, title, body, bitmap)
+            val expandedView = buildExpandedView(context, title, body, bitmap, footerText)
+            builder.setCustomContentView(collapsedView)
+                .setCustomBigContentView(expandedView)
                 .setStyle(NotificationCompat.DecoratedCustomViewStyle())
         }
 
@@ -149,6 +137,55 @@ internal object TNNotificationHelper {
             dismissIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+    }
+
+    private fun buildCollapsedView(
+        context: Context,
+        title: String,
+        body: String,
+        bitmap: Bitmap?,
+    ): RemoteViews {
+        val view = RemoteViews(context.packageName, R.layout.tn_notification_collapsed)
+        if (title.isNotEmpty()) {
+            view.setTextViewText(R.id.tn_title, title)
+            view.setViewVisibility(R.id.tn_title, View.VISIBLE)
+        }
+        if (body.isNotEmpty()) {
+            view.setTextViewText(R.id.tn_body, body)
+            view.setViewVisibility(R.id.tn_body, View.VISIBLE)
+        }
+        if (bitmap != null) {
+            view.setImageViewBitmap(R.id.tn_image, bitmap)
+            view.setViewVisibility(R.id.tn_image, View.VISIBLE)
+        }
+        return view
+    }
+
+    private fun buildExpandedView(
+        context: Context,
+        title: String,
+        body: String,
+        bitmap: Bitmap?,
+        footerText: String?,
+    ): RemoteViews {
+        val view = RemoteViews(context.packageName, R.layout.tn_notification_expanded)
+        if (title.isNotEmpty()) {
+            view.setTextViewText(R.id.tn_title, title)
+            view.setViewVisibility(R.id.tn_title, View.VISIBLE)
+        }
+        if (body.isNotEmpty()) {
+            view.setTextViewText(R.id.tn_body, body)
+            view.setViewVisibility(R.id.tn_body, View.VISIBLE)
+        }
+        if (bitmap != null) {
+            view.setImageViewBitmap(R.id.tn_image, bitmap)
+            view.setViewVisibility(R.id.tn_image, View.VISIBLE)
+        }
+        if (footerText != null) {
+            view.setTextViewText(R.id.tn_footer, footerText)
+            view.setViewVisibility(R.id.tn_footer, View.VISIBLE)
+        }
+        return view
     }
 
     private fun resolveAppIcon(context: Context): Int = try {

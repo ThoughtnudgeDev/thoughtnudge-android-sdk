@@ -39,7 +39,16 @@ class TNNotificationClickReceiver : BroadcastReceiver() {
     private fun launchDeepLink(context: Context, url: String, sourceIntent: Intent): Boolean {
         return try {
             val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                // FLAG_ACTIVITY_NEW_TASK is required when starting from a non-Activity
+                // context (BroadcastReceiver). FLAG_ACTIVITY_CLEAR_TOP brings any
+                // existing matching activity in the host app's task to the front,
+                // killing activities above it — essential for background/killed
+                // states where the host app may already have a stack but we want
+                // to land on the deep-link target. FLAG_ACTIVITY_SINGLE_TOP avoids
+                // creating duplicate activities if one is already on top.
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
                 setPackage(context.packageName)
                 sourceIntent.extras?.let { putExtras(it) }
             }

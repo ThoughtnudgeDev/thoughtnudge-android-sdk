@@ -63,6 +63,13 @@ internal object TNNotificationHelper {
             .setDeleteIntent(buildDismissPendingIntent(context, messageId))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // Visibility + category hints help OEM-skinned Androids (Xiaomi,
+            // OnePlus, Samsung, Huawei, etc.) classify these as full-importance
+            // notifications. Without them, several skins show the heads-up
+            // briefly then drop the notification from the shade entirely.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_PROMO)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
 
         headerText?.let { builder.setSubText(it) }
 

@@ -70,7 +70,7 @@ object ThoughtNudge {
     enum class Environment(internal val url: String) {
         PRODUCTION("https://api.thoughtnudge.com"),
         STAGING("https://staging-api.thoughtnudge.com"),
-        DEVELOPMENT("http://13.235.167.184:8000")
+        DEVELOPMENT("https://integrations.thoughtnudge.com/event-service")
     }
 
     internal var apiBaseUrl = ""

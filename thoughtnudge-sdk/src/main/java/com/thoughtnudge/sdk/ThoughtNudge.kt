@@ -82,6 +82,38 @@ object ThoughtNudge {
     internal var context: Context? = null
         private set
 
+    private const val KEY_PENDING_DEEPLINK = "tn_pending_deeplink"
+    private const val KEY_PENDING_DEEPLINK_MSG_ID = "tn_pending_deeplink_message_id"
+
+    /**
+     * Optional callback invoked when a notification with a `cta_url` is tapped.
+     * Set this from your Application or main Activity to handle deep-link
+     * navigation programmatically — useful when Android's standard
+     * ACTION_VIEW intent dispatch doesn't route correctly to the right screen
+     * in your app (e.g. when the app is in background or returning from a
+     * killed state, and the deep-link target activity has a complex back stack
+     * or non-standard launchMode).
+     *
+     * For foreground / background taps the callback fires immediately on the
+     * SDK process. For cold-start taps (app killed when user tapped) the URL
+     * is also persisted via SharedPreferences — read it at app start by
+     * calling `ThoughtNudge.consumePendingDeepLink()`.
+     *
+     * Example:
+     * ```
+     * ThoughtNudge.onDeepLink = { url, messageId ->
+     *     // Route via your existing deep-link handler
+     *     DeepLinkRouter.handle(url)
+     * }
+     * ```
+     *
+     * If unset, the SDK falls back to firing an ACTION_VIEW Intent — which
+     * works for apps that have proper intent filters declared for their URL
+     * scheme.
+     */
+    @JvmField
+    var onDeepLink: ((url: String, messageId: String) -> Unit)? = null
+
     private var prefs: SharedPreferences? = null
     private var initialized = false
     private var pendingUserId: String? = null
@@ -175,6 +207,49 @@ object ThoughtNudge {
     @JvmStatic
     fun reportEvent(eventType: String, messageId: String) {
         TNWebhookReporter.reportEvent(eventType, messageId)
+    }
+
+    /**
+     * Returns and clears the deep-link URL pending from a notification tap
+     * that occurred while the app was killed. Call this from your launcher
+     * Activity's onCreate (or wherever your deep-link routing entry point
+     * lives) to navigate to the correct screen on cold-start.
+     *
+     * Example:
+     * ```kotlin
+     * override fun onCreate(savedInstanceState: Bundle?) {
+     *     super.onCreate(savedInstanceState)
+     *     ThoughtNudge.consumePendingDeepLink()?.let { (url, messageId) ->
+     *         DeepLinkRouter.handle(url)
+     *     }
+     * }
+     * ```
+     *
+     * Returns null if no deep link is pending.
+     */
+    @JvmStatic
+    fun consumePendingDeepLink(): Pair<String, String>? {
+        val ctx = context ?: return null
+        ensureLoaded(ctx)
+        val p = prefs ?: ctx.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val url = p.getString(KEY_PENDING_DEEPLINK, null) ?: return null
+        val messageId = p.getString(KEY_PENDING_DEEPLINK_MSG_ID, "") ?: ""
+        p.edit().remove(KEY_PENDING_DEEPLINK).remove(KEY_PENDING_DEEPLINK_MSG_ID).apply()
+        Log.d(TAG, "consumePendingDeepLink — returning url=$url messageId=$messageId")
+        return Pair(url, messageId)
+    }
+
+    /**
+     * Internal — called by TNNotificationClickReceiver to persist the deep
+     * link so consumePendingDeepLink() can return it on next app launch.
+     */
+    internal fun storePendingDeepLink(context: Context, url: String, messageId: String) {
+        ensureLoaded(context)
+        prefs?.edit()
+            ?.putString(KEY_PENDING_DEEPLINK, url)
+            ?.putString(KEY_PENDING_DEEPLINK_MSG_ID, messageId)
+            ?.apply()
+        Log.d(TAG, "Pending deep link persisted: url=$url messageId=$messageId")
     }
 
     // ---- FCM forwarding API (called from client's FirebaseMessagingService) ----

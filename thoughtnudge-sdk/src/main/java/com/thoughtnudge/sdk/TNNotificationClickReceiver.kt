@@ -24,6 +24,24 @@ class TNNotificationClickReceiver : BroadcastReceiver() {
         TNWebhookReporter.reportEvent("clicked", messageId)
 
         val ctaUrl = intent.getStringExtra("cta_url")?.takeIf { it.isNotEmpty() }
+
+        if (ctaUrl != null) {
+            // Persist for cold-start consumption — the launching Activity
+            // can read this via ThoughtNudge.consumePendingDeepLink() on
+            // onCreate to navigate after the app launches fresh.
+            ThoughtNudge.storePendingDeepLink(context, ctaUrl, messageId)
+
+            // If the host app set an onDeepLink callback, invoke it
+            // immediately. This works for foreground/background — the
+            // process is alive and the callback can navigate using the
+            // host's existing routing logic, without relying on Android's
+            // ACTION_VIEW intent dispatch (which can land on the wrong
+            // activity for apps with non-standard launchModes or back
+            // stacks). For killed-state taps the callback is typically
+            // unset at this moment; consumePendingDeepLink covers that case.
+            ThoughtNudge.onDeepLink?.invoke(ctaUrl, messageId)
+        }
+
         val launched = ctaUrl?.let { launchDeepLink(context, it, intent) } ?: false
         if (!launched) {
             launchAppMainActivity(context, intent)

@@ -120,13 +120,20 @@ internal object TNNotificationHelper {
         ctaUrlOverride: String? = null,
         actionId: String? = null,
     ): PendingIntent {
-        val intent = Intent(context, TNNotificationClickReceiver::class.java).apply {
+        val intent = Intent(context, TNNotificationClickActivity::class.java).apply {
             putExtra("tn_message_id", messageId)
             for ((k, v) in data) putExtra(k, v)
             ctaUrlOverride?.let { putExtra("cta_url", it) }
             actionId?.let { putExtra("tn_action_id", it) }
+            // FLAG_ACTIVITY_NEW_TASK is required because a PendingIntent
+            // launched from outside an Activity context (the system notification
+            // handler) needs to start in a new task.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        return PendingIntent.getBroadcast(
+        // Use getActivity (not getBroadcast) so the notification tap launches
+        // the trampoline Activity directly. Activity launches from a notification
+        // tap are exempt from Android 10+'s background-start restrictions.
+        return PendingIntent.getActivity(
             context,
             messageId.hashCode() + codeOffset,
             intent,

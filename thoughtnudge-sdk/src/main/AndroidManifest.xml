@@ -6,17 +6,27 @@
 
     <application>
         <!--
-            Notification Click Receiver — fires when user taps a SDK-displayed
-            notification. Registered via SDK's own PendingIntent, no conflict
-            with client's own notification handling.
+            Notification Click Trampoline Activity — fires when user taps a
+            SDK-displayed notification (body or action button). Replaces the
+            previous BroadcastReceiver because Android 10+ restricts receivers
+            from launching activities when the host app is in background or
+            killed. An invisible activity launched via PendingIntent.getActivity
+            counts as a foreground user action and can chain to the host app's
+            deep-link target without restriction. Theme.NoDisplay + noHistory
+            keeps it invisible.
         -->
-        <receiver
-            android:name="com.thoughtnudge.sdk.TNNotificationClickReceiver"
-            android:exported="false" />
+        <activity
+            android:name="com.thoughtnudge.sdk.TNNotificationClickActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
 
         <!--
             Notification Dismiss Receiver — fires when user swipes away a
-            SDK-displayed notification.
+            SDK-displayed notification. Doesn't need to launch any activity
+            (just reports the read event), so a BroadcastReceiver is fine.
         -->
         <receiver
             android:name="com.thoughtnudge.sdk.TNNotificationDismissReceiver"

@@ -20,7 +20,7 @@ internal object TNWebhookReporter {
             return
         }
         post(
-            "${ThoughtNudge.apiBaseUrl}/notifications/event/",
+            "${ThoughtNudge.apiBaseUrl}/notifications/event",
             mapOf(
                 "event_type" to eventType,
                 "message_id" to messageId,

@@ -188,7 +188,7 @@ object ThoughtNudge {
         val token = prefs?.getString(KEY_FCM_TOKEN, "") ?: ""
         if (token.isNotEmpty()) {
             TNWebhookReporter.post(
-                "$apiBaseUrl/notifications/deregister-token/",
+                "$apiBaseUrl/notifications/deregister-token",
                 mapOf("token" to token)
             )
         }
@@ -405,7 +405,7 @@ object ThoughtNudge {
     private fun registerToken(token: String) {
         if (userId.isEmpty() || apiBaseUrl.isEmpty()) return
         TNWebhookReporter.post(
-            "$apiBaseUrl/notifications/register-token/",
+            "$apiBaseUrl/notifications/register-token",
             mapOf(
                 "user_id" to userId,
                 "token" to token,

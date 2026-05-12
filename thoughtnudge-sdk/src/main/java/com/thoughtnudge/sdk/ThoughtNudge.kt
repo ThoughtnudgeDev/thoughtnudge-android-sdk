@@ -68,7 +68,7 @@ object ThoughtNudge {
      * internally — you never need to configure URLs directly.
      */
     enum class Environment(internal val url: String) {
-        PRODUCTION("https://api.thoughtnudge.com"),
+        PRODUCTION("https://integrations.thoughtnudge.com/event-service"),
         STAGING("https://staging-api.thoughtnudge.com"),
         DEVELOPMENT("https://integrations.thoughtnudge.com/event-service")
     }

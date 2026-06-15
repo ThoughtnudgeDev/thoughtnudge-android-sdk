@@ -49,6 +49,10 @@ object ThoughtNudge {
     private const val KEY_APP_ID = "tn_app_id"
     private const val KEY_API_BASE_URL = "tn_api_base_url"
     private const val KEY_FCM_TOKEN = "tn_fcm_token"
+    // Last (token, user) pair that was successfully registered with the backend.
+    // Used to skip redundant /register-token calls on every app launch.
+    private const val KEY_REGISTERED_TOKEN = "tn_registered_token"
+    private const val KEY_REGISTERED_USER = "tn_registered_user"
     private const val MESSAGE_ID_KEY = "tn_message_id"
 
     // ---- ThoughtNudge Firebase project credentials (hardcoded) ----
@@ -196,6 +200,8 @@ object ThoughtNudge {
         prefs?.edit()
             ?.remove(KEY_USER_ID)
             ?.remove(KEY_FCM_TOKEN)
+            ?.remove(KEY_REGISTERED_TOKEN)
+            ?.remove(KEY_REGISTERED_USER)
             ?.apply()
         Log.d(TAG, "User logged out, token deregistered")
     }
@@ -404,6 +410,20 @@ object ThoughtNudge {
 
     private fun registerToken(token: String) {
         if (userId.isEmpty() || apiBaseUrl.isEmpty()) return
+
+        // Skip the network call if this exact (token, user) pair is already
+        // registered. Without this guard the SDK re-POSTs an unchanged token on
+        // every app launch, which generated ~1M redundant calls/hr and drove
+        // backend egress cost. We only register on first run, token refresh,
+        // or a user change.
+        val lastToken = prefs?.getString(KEY_REGISTERED_TOKEN, null)
+        val lastUser = prefs?.getString(KEY_REGISTERED_USER, null)
+        if (token == lastToken && userId == lastUser) {
+            Log.d(TAG, "Token unchanged for current user, skipping re-register")
+            return
+        }
+
+        val registeredUser = userId
         TNWebhookReporter.post(
             "$apiBaseUrl/notifications/register-token",
             mapOf(
@@ -412,7 +432,14 @@ object ThoughtNudge {
                 "platform" to "android",
                 "app_id" to appId
             )
-        )
-        Log.d(TAG, "Token registered with backend")
+        ) {
+            // Persist the marker only after a successful response so a failed
+            // call is retried on the next launch.
+            prefs?.edit()
+                ?.putString(KEY_REGISTERED_TOKEN, token)
+                ?.putString(KEY_REGISTERED_USER, registeredUser)
+                ?.apply()
+            Log.d(TAG, "Token registered with backend")
+        }
     }
 }

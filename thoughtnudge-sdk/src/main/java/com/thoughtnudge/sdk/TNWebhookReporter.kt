@@ -32,7 +32,11 @@ internal object TNWebhookReporter {
         Log.d(ThoughtNudge.TAG, "Reported event: $eventType for message $messageId")
     }
 
-    internal fun post(url: String, body: Map<String, String>) {
+    internal fun post(
+        url: String,
+        body: Map<String, String>,
+        onSuccess: (() -> Unit)? = null
+    ) {
         val json = JSONObject(body as Map<*, *>).toString()
         val request = Request.Builder()
             .url(url)
@@ -46,7 +50,7 @@ internal object TNWebhookReporter {
 
             override fun onResponse(call: Call, response: Response) {
                 Log.d(ThoughtNudge.TAG, "API response: ${response.code}")
-                response.close()
+                response.use { if (it.isSuccessful) onSuccess?.invoke() }
             }
         })
     }
